@@ -1,7 +1,9 @@
 package samplApi;
 
+import java.sql.Array;
 import java.util.HashMap;
 
+import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
@@ -33,24 +35,157 @@ public class CRUDController {
 	RedisConnection redisConnection;
 		
 	@RequestMapping(value = "/{uriType}", method = RequestMethod.POST, consumes = "application/json")
-	public ResponseEntity<Object> create(@RequestHeader HttpHeaders headers, @RequestBody String entity, @PathVariable String uriType) throws ParseException{
+	public ResponseEntity<Object> create(@RequestHeader HttpHeaders headers, @RequestBody String entity, @PathVariable String uriType) throws Exception{
 		
 		JSONObject object = (JSONObject) new JSONParser().parse(entity);
 		
 		HashMap hm = new HashMap();
 		hm = (HashMap) new JSONParser().parse(object.toString());
 		
-		for(Object o : hm.keySet()){
-		System.out.println(o + "/"+hm.get(o));
-		}
+		JSONObject json = new JSONObject();
+		json.putAll(hm);
 		
-		if(hm.containsKey("$schema"))
-			redisConnection.getJedis().set("schema^" + object.get("$schema").toString(), object.toString());
+// for some time	pushJsontoRedis(object);
 		
-		if(hm.containsKey("_id"))
-		redisConnection.getJedis().set(object.get("_id").toString(), object.toString());
+		HashMap hm1 = makeGrandHashMap(hm);
+		
+//		for(Object o : hm.keySet()){
+//		System.out.println(o + "/"+hm.get(o) + " - "+ hm.get(o).getClass().getName());
+//		}
+//		
+//		if(hm.containsKey("$schema"))
+//			redisConnection.getJedis().set("schema^" + object.get("$schema").toString(), object.toString());
+//		
+//		if(hm.containsKey("_id"))
+//		redisConnection.getJedis().set(object.get("_id").toString(), object.toString());
+		
+		JSONObject jsonZ = new JSONObject();
+		jsonZ.putAll(hm1);
+		
+		String key = jsonZ.get("_id").toString();
+		
+		redisConnection.getJedis().set(key, json.toString());
 			
 		return new ResponseEntity<Object>(object, HttpStatus.CREATED);
+	}
+	
+	
+	
+	
+	
+	
+	
+		
+	public void pushJsontoRedis(JSONObject obj) throws ParseException{
+		
+		HashMap hm =  (HashMap) new JSONParser().parse(obj.toString());
+		
+		for(Object o : hm.keySet()){
+			
+			if(hm.get(o) instanceof JSONObject){
+				JSONObject jsonObject = (JSONObject) hm.get(o);
+				String keyGen = jsonObject.get("_id").toString();
+					redisConnection.getJedis().set(keyGen, jsonObject.toString());
+					hm.put(o, keyGen);
+				
+			}
+			
+			if(hm.get(o) instanceof JSONArray){
+				
+				JSONArray jsonArray = (JSONArray) hm.get(o);
+				
+				String[] stringArray = new String[jsonArray.size()];
+				
+				for(int i = 0; i < jsonArray.size(); i++){
+					JSONObject jsonObject = (JSONObject) jsonArray.get(i);
+					String key = jsonObject.get("_id").toString();
+					stringArray[i] = key;
+					redisConnection.getJedis().set(key, jsonObject.toString());
+					//inspect if that thing contains more JSON
+				}
+				
+				hm.put(o, stringArray);
+				
+			}
+			
+		}
+		
+		String key = obj.get("_id").toString();
+		
+		JSONObject json = new JSONObject();
+		json.putAll(hm);
+		
+		redisConnection.getJedis().set(key, json.toString());
+		
+	}
+	
+
+	public HashMap makeGrandHashMap(HashMap hm) throws ParseException{
+		
+		for(Object o : hm.keySet()){
+			
+			if(hm.get(o) instanceof JSONObject){
+				
+				
+				JSONObject jsonObject = (JSONObject) hm.get(o);
+				
+				HashMap hmL =  (HashMap) jsonObject;
+				
+				String keyGen = jsonObject.get("_id").toString();
+					redisConnection.getJedis().set(keyGen, jsonObject.toString());
+					
+					if(!isSimpleJson(jsonObject)){
+						
+						makeGrandHashMap(hmL);
+						
+					}
+					
+					hm.put(o, keyGen);
+				
+			}
+			
+			if(hm.get(o) instanceof JSONArray){
+				
+				JSONArray jsonArray = (JSONArray) hm.get(o);
+				
+				String[] stringArray = new String[jsonArray.size()];
+				
+				for(int i = 0; i < jsonArray.size(); i++){
+					JSONObject jsonObject = (JSONObject) jsonArray.get(i);
+					String key = jsonObject.get("_id").toString();
+					stringArray[i] = key;
+					redisConnection.getJedis().set(key, jsonObject.toString());
+					
+					if(!isSimpleJson(jsonObject)){
+						
+						makeGrandHashMap((HashMap) jsonObject);
+						
+					}
+				}
+				
+				hm.put(o, stringArray);
+				
+			}
+			
+		}
+		
+		
+		return hm;
+		
+	}
+	
+	
+	
+	
+	
+	
+	
+	public boolean isSimpleJson(JSONObject o){
+		HashMap hmInside = (HashMap) o;
+		for(Object key : hmInside.keySet()){
+			if(((hmInside.get(key) instanceof JSONObject)||(hmInside.get(key) instanceof JSONArray))) return false;
+		}
+		return true;		
 	}
 	
 	@RequestMapping(value = "/{uriType}/{id}", method = RequestMethod.GET, produces = "application/json")
@@ -60,6 +195,8 @@ public class CRUDController {
 		HashMap hm = new HashMap();
 		if(result != null)
 		hm = (HashMap) new JSONParser().parse(result);
+		
+
 				
 		return new ResponseEntity<Object>(result == null ? null : (JSONObject) new JSONParser().parse(result),result == null ? HttpStatus.FOUND :HttpStatus.NOT_FOUND);		
 	}
