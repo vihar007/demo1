@@ -9,6 +9,7 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.jackson.JsonObjectDeserializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -227,18 +228,71 @@ public class CRUDController {
 		}
 		
 		
-		HashMap hm = new HashMap();
-		hm = (HashMap) new JSONParser().parse(result);
+			cascadeDelete((HashMap) new JSONParser().parse(result));
 		
-		for(Object key : hm.keySet()){
-			System.out.println(key + " - " + hm.get(key).toString());
-			//deleting dependent things ;)
-			
-		}
+
 		
 	//	if(hm.containsKey("_id")) 
 	//		redisConnection.getJedis().del(id);
 		return new ResponseEntity<>(HttpStatus.OK);
+	}
+	
+	static int pppp = 0;
+	
+	public void cascadeDelete(HashMap hm) throws ParseException {
+		
+		
+		
+		System.out.println("I am called " + ++pppp + " times");
+		
+		for(Object key : hm.keySet()){
+			
+			if(key.equals("_id")){
+				redisConnection.getJedis().del(hm.get(key).toString());
+			} else if(hm.get(key) instanceof JSONArray){
+				JSONArray jsonArray = (JSONArray) hm.get(key);
+				for(int i = 0 ; i < jsonArray.size() ; i++){
+					JSONObject json = (JSONObject) new JSONParser().parse(redisConnection.getJedis().get(jsonArray.get(i).toString()));
+					cascadeDelete((HashMap) json);
+					System.out.println("Inside JSON");
+					redisConnection.getJedis().del(jsonArray.get(i).toString());
+				}	
+			} else if(hm.get(key) instanceof JSONObject){
+				System.out.println("Ouch I have JSON KEY" + hm.get(key).toString());
+				JSONObject resJson = (JSONObject) new JSONParser().parse(hm.get(key).toString());
+				redisConnection.getJedis().del(resJson.get("_id").toString());
+				if(!isSimpleJson(resJson)){
+					cascadeDelete((HashMap) resJson);
+					System.out.println("I am not simple JSON");
+				}  else {
+					System.out.println("****************SIMPLE JSON*******************");
+				}
+			} else {
+				{
+					String kye = hm.get(key).toString();
+					String result = redisConnection.getJedis().get(hm.get(key).toString());
+					if(result != null){
+						JSONObject resJson = (JSONObject) new JSONParser().parse(result);
+						redisConnection.getJedis().del(resJson.get("_id").toString());
+						if(!isSimpleJson(resJson)){
+							cascadeDelete((HashMap) resJson);
+							System.out.println("I am not simple JSON");
+						}  else {
+							System.out.println("****************SIMPLE JSON*******************");
+						}
+											
+					}
+				}
+			}
+			
+			//deleting all sub Json
+			
+			
+			
+		System.out.println("Keys : " + key);
+			
+			
+		}
 	}
 
 }
