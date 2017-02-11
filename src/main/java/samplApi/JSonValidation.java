@@ -15,9 +15,8 @@ import com.github.fge.jsonschema.util.JsonLoader;
 public class JSonValidation  
 {
 
-public boolean validate(String jsonData, String jsonSchema) {
+static public boolean validate(String jsonData, String jsonSchema) {
     ProcessingReport report = null;
-    boolean result = false;
     try {
         
         JsonNode schemaNode = JsonLoader.fromString(jsonSchema);
@@ -32,15 +31,7 @@ public boolean validate(String jsonData, String jsonSchema) {
     } catch (IOException e) {
         e.printStackTrace();
     }
-//    if (report != null) {
-//        Iterator<ProcessingMessage> iter = report.iterator();
-//        while (iter.hasNext()) {
-//            ProcessingMessage pm = iter.next();
-//            System.out.println("Processing Message: "+pm.getMessage());
-//        }
-//        result = report.isSuccess();
-//    }
-//    System.out.println(" Result=" +result);
+
     return report.isSuccess();
 }
 

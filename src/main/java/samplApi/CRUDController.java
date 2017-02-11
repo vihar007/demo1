@@ -35,11 +35,48 @@ public class CRUDController {
 	
 	@Autowired
 	RedisConnection redisConnection;
+	
+	
+	@RequestMapping(value = "/schema", method = RequestMethod.POST, consumes = "application/json")
+	public ResponseEntity<Object> createSchema(@RequestHeader HttpHeaders headers, @RequestBody String entity) throws Exception{
+		
+		JSONObject object = (JSONObject) new JSONParser().parse(entity);
+		
+		if(redisConnection.getJedis().get(object.get("$schema").toString()) == null){
+			
+			redisConnection.getJedis().set(object.get("$schema").toString(), object.toString());
+			
+			return new ResponseEntity<Object>(object,HttpStatus.CREATED);
+			
+		}		
+	return new ResponseEntity<Object>(object, HttpStatus.BAD_REQUEST);
+	}
+	
+	
 		
 	@RequestMapping(value = "/{uriType}", method = RequestMethod.POST, consumes = "application/json")
 	public ResponseEntity<Object> create(@RequestHeader HttpHeaders headers, @RequestBody String entity, @PathVariable String uriType) throws Exception{
 		
+		String schema = redisConnection.getJedis().get(uriType);
+		
+		
+		
+		if(schema == null){
+			return new ResponseEntity<Object>(null, HttpStatus.PRECONDITION_FAILED);
+		} else {
+			
+			JSONObject schemaObject = (JSONObject) new JSONParser().parse(schema);
+			
+			if(!JSonValidation.validate(entity, schemaObject.toString())){
+				return new ResponseEntity<Object>(null, HttpStatus.PRECONDITION_FAILED);
+			}
+			
+		} 
+		
+		
 		JSONObject object = (JSONObject) new JSONParser().parse(entity);
+		
+		
 		
 		HashMap hm = new HashMap();
 		hm = (HashMap) new JSONParser().parse(object.toString());
@@ -47,20 +84,8 @@ public class CRUDController {
 		JSONObject json = new JSONObject();
 		json.putAll(hm);
 		
-// for some time	pushJsontoRedis(object);
-		
 		HashMap hm1 = makeGrandHashMap(hm);
-		
-//		for(Object o : hm.keySet()){
-//		System.out.println(o + "/"+hm.get(o) + " - "+ hm.get(o).getClass().getName());
-//		}
-//		
-//		if(hm.containsKey("$schema"))
-//			redisConnection.getJedis().set("schema^" + object.get("$schema").toString(), object.toString());
-//		
-//		if(hm.containsKey("_id"))
-//		redisConnection.getJedis().set(object.get("_id").toString(), object.toString());
-		
+				
 		JSONObject jsonZ = new JSONObject();
 		jsonZ.putAll(hm1);
 		
@@ -71,67 +96,6 @@ public class CRUDController {
 		return new ResponseEntity<Object>(object, HttpStatus.CREATED);
 	}
 	
-	
-	
-	
-	
-	
-	
-		
-	public void pushJsontoRedis(JSONObject obj) throws ParseException{
-		
-		HashMap hm =  (HashMap) new JSONParser().parse(obj.toString());
-		
-		for(Object o : hm.keySet()){
-			
-			if(hm.get(o) instanceof JSONObject){
-				JSONObject jsonObject = (JSONObject) hm.get(o);
-				String keyGen = jsonObject.get("_id").toString();
-					redisConnection.getJedis().set(keyGen, jsonObject.toString());
-					hm.put(o, keyGen);
-				
-			}
-			
-			if(hm.get(o) instanceof JSONArray){
-				
-				JSONArray jsonArray = (JSONArray) hm.get(o);
-				
-				String[] stringArray = new String[jsonArray.size()];
-				
-				for(int i = 0; i < jsonArray.size(); i++){
-					JSONObject jsonObject = (JSONObject) jsonArray.get(i);
-					String key = jsonObject.get("_id").toString();
-					stringArray[i] = key;
-					redisConnection.getJedis().set(key, jsonObject.toString());
-					//inspect if that thing contains more JSON
-				}
-				
-				hm.put(o, stringArray);
-				
-			}
-			
-		}
-		
-		String key = obj.get("_id").toString();
-		
-		JSONObject json = new JSONObject();
-		json.putAll(hm);
-		
-		redisConnection.getJedis().set(key, json.toString());
-		
-	}
-	
-	public HashMap reconstructObject(HashMap hm){
-		
-		for(Object o : hm.keySet()){
-			
-		}
-		
-		
-		return null;
-	}
-	
-
 	public HashMap makeGrandHashMap(HashMap hm) throws ParseException{
 		
 		for(Object o : hm.keySet()){
@@ -179,19 +143,10 @@ public class CRUDController {
 				
 			}
 			
-		}
-		
-		
-		return hm;
-		
+		}				
+		return hm;		
 	}
-	
-	
-	
-	
-	
-	
-	
+		
 	public boolean isSimpleJson(JSONObject o){
 		HashMap hmInside = (HashMap) o;
 		for(Object key : hmInside.keySet()){
@@ -213,6 +168,43 @@ public class CRUDController {
 		}
 		return new ResponseEntity<Object>(result == null ? null : (JSONObject) new JSONParser().parse(result),result == null ? HttpStatus.FOUND :HttpStatus.NOT_FOUND);		
 	}
+	
+	@RequestMapping(value="/{uriType}", method = RequestMethod.PUT, consumes="application/json")
+	public ResponseEntity<Object> update(@RequestHeader HttpHeaders headers,@RequestBody String entity) throws ParseException{
+		JSONObject jsonObject = new JSONObject();
+		JSONParser jsonParser = new JSONParser();
+		jsonObject = (JSONObject) jsonParser.parse(entity);
+		String key = (String) jsonObject.get("_id");
+		String result = redisConnection.getJedis().get(key);
+		if(result == null){
+			return new ResponseEntity<Object>(key,HttpStatus.NOT_FOUND);
+		}else{
+			HashMap current = (HashMap) new JSONParser().parse(result);
+			HashMap update = (HashMap) jsonObject;
+			HashMap result1 = updated(current,update);
+			if(result1 != null){
+				JSONObject newObject = new JSONObject();
+				newObject.putAll(result1);
+				redisConnection.getJedis().set((String) newObject.get("_id"), newObject.toString());
+				return new ResponseEntity<Object>(newObject,HttpStatus.ACCEPTED);
+			}else{
+				return new ResponseEntity<Object>(key,HttpStatus.NOT_FOUND);
+			}
+		}
+	}
+	
+	public HashMap updated(HashMap hash1, HashMap hash2){
+		for(Object o : hash1.keySet()){
+			if(!hash1.get(o).equals(hash2.get(o))){
+				hash1.put(o, hash1.get(o));
+			}else{
+				return null;
+			}
+		}
+		return hash1;
+		
+	}
+
 	
 	@RequestMapping(value = "/{uriType}/{id}", method = RequestMethod.DELETE, produces = "application/json")
 	public ResponseEntity<Void> delete(@RequestHeader HttpHeaders headers, @PathVariable String uriType,
@@ -284,14 +276,7 @@ public class CRUDController {
 					}
 				}
 			}
-			
-			//deleting all sub Json
-			
-			
-			
-		System.out.println("Keys : " + key);
-			
-			
+						
 		}
 	}
 
