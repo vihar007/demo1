@@ -1,6 +1,7 @@
 package samplApi;
 
 import java.sql.Array;
+import java.util.Arrays;
 import java.util.HashMap;
 
 import org.json.simple.JSONArray;
@@ -64,7 +65,7 @@ public class CRUDController {
 		
 		String key = jsonZ.get("_id").toString();
 		
-		redisConnection.getJedis().set(key, json.toString());
+		redisConnection.getJedis().set(key, jsonZ.toString());
 			
 		return new ResponseEntity<Object>(object, HttpStatus.CREATED);
 	}
@@ -119,6 +120,16 @@ public class CRUDController {
 		
 	}
 	
+	public HashMap reconstructObject(HashMap hm){
+		
+		for(Object o : hm.keySet()){
+			
+		}
+		
+		
+		return null;
+	}
+	
 
 	public HashMap makeGrandHashMap(HashMap hm) throws ParseException{
 		
@@ -163,7 +174,7 @@ public class CRUDController {
 					}
 				}
 				
-				hm.put(o, stringArray);
+				hm.put(o, Arrays.asList(stringArray));
 				
 			}
 			
@@ -193,11 +204,12 @@ public class CRUDController {
 			@PathVariable String id) throws ParseException{
 		String result = redisConnection.getJedis().get(id);
 		HashMap hm = new HashMap();
-		if(result != null)
-		hm = (HashMap) new JSONParser().parse(result);
-		
-
-				
+		if(result != null){
+			JSONObject json = (JSONObject) new JSONParser().parse(result);
+			if(!json.get("_type").equals(uriType)){
+				result = null;
+			}
+		}
 		return new ResponseEntity<Object>(result == null ? null : (JSONObject) new JSONParser().parse(result),result == null ? HttpStatus.FOUND :HttpStatus.NOT_FOUND);		
 	}
 	
@@ -207,14 +219,25 @@ public class CRUDController {
 		
 		
 		String result = redisConnection.getJedis().get(id);
-		if(result == null) 
-		return new ResponseEntity<Void>(HttpStatus.NOT_FOUND);
+		if(result == null) {
+			JSONObject json = (JSONObject) new JSONParser().parse(result);
+			if(!json.get("_type").equals(uriType)){
+				return new ResponseEntity<Void>(HttpStatus.NOT_FOUND);
+			}		
+		}
+		
 		
 		HashMap hm = new HashMap();
 		hm = (HashMap) new JSONParser().parse(result);
 		
-		if(hm.containsKey("_id")) 
-			redisConnection.getJedis().del(id);
+		for(Object key : hm.keySet()){
+			System.out.println(key + " - " + hm.get(key).toString());
+			//deleting dependent things ;)
+			
+		}
+		
+	//	if(hm.containsKey("_id")) 
+	//		redisConnection.getJedis().del(id);
 		return new ResponseEntity<>(HttpStatus.OK);
 	}
 
