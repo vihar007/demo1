@@ -15,7 +15,7 @@ import com.github.fge.jsonschema.util.JsonLoader;
 public class JSonValidation  
 {
 
-static public boolean validate(String jsonData, String jsonSchema) {
+public static boolean validate(String jsonData, String jsonSchema) {
     ProcessingReport report = null;
     try {
         
