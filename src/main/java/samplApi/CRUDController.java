@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.exceptions.JedisDataException;
 import redisConn.RedisConnection;
 
 @RestController
@@ -101,9 +102,135 @@ public class CRUDController {
 		
 		//redisConnection.getJedis().set(key, jsonZ.toString());
 		
-		redisConnection.getJedis().hset(key1,jsonZ.get("_type").toString() ,jsonZ.toString());
+		redisConnection.getJedis().hset(key1,jsonZ.get("_type").toString()+","+key1 ,jsonZ.toString());
 			
 		return new ResponseEntity<Object>(object, HttpStatus.CREATED);
+	}
+	
+	
+	public HashMap reconstructHashMap(HashMap hm) throws ParseException,JedisDataException{
+		
+		for(Object o : hm.keySet()){
+			
+			//do nothing studd
+			
+			if(o.toString().equals("_id") || o.toString().equals("_type")){
+				//do nothing
+				
+				System.out.println("We do nothing for id & type");
+				
+				System.out.println(o.toString());
+			
+			} else {
+				
+				Object value = hm.get(o);
+				
+				if(value instanceof JSONArray){
+					
+					JSONArray jsonArray = (JSONArray) hm.get(o);
+					
+					System.out.println("*************Inside JSON array");
+					
+					
+					
+					
+					
+					
+					//iterate over & call the method again
+					
+					for(int i = 0; i < jsonArray.size(); i++){
+						String key = jsonArray.get(i).toString();
+						
+						System.out.println("Key : " + key);
+						
+						if(redisConnection.getJedis().type(key.toString()).toString().equals("hash")){
+							System.out.println("Its a hash get the document and pass it further please");
+							
+							
+							JSONObject obj = getJSONObject(key);
+							
+							HashMap hm1  = (HashMap) obj;
+							
+							jsonArray.set(i, obj);
+							
+							reconstructHashMap(hm1);
+							
+							
+						}
+						
+						
+						
+						//String key1 = jsonObject.get("_id").toString();
+						//stringArray[i] = key1;
+					}
+					
+					
+				} else if(value instanceof String){
+					
+					//retriving Map
+					
+					System.out.println("***********************************************");
+					
+					System.out.println("Key Type " + redisConnection.getJedis().type(value.toString()));
+					
+					System.out.println(o.toString());
+					
+					System.out.println("***********************************************");
+					
+					if(redisConnection.getJedis().type(value.toString()).toString().equals("hash")){
+						
+						JSONObject job = getJSONObject(value.toString());
+						
+						HashMap hm2  = (HashMap) job;
+						
+						hm.put(o, job);
+						
+						reconstructHashMap(hm2);
+						
+						
+					}
+					
+				}
+				
+			}
+			
+		}
+		
+		
+		return hm;
+	}
+	
+	public JSONObject getJSONObject(String key) throws ParseException{
+		
+		
+		Map hmz = redisConnection.getJedis().hgetAll(key);
+	    
+	    String resultz = null;
+	    
+	   for(Object keys : hmz.keySet()){
+			   resultz = hmz.get(keys).toString();		   
+	   }
+		
+		
+		return (JSONObject) new JSONParser().parse(resultz);
+		
+	}
+	
+	
+	public String getParent(String id) throws ParseException{
+		
+		
+	    Map hmz = redisConnection.getJedis().hgetAll(id);
+
+	    String[] keyz = null;
+	    
+	   for(Object keys : hmz.keySet())
+		   keyz = keys.toString().split(",");
+
+		
+		
+		return keyz[1];
+		
 	}
 	
 
@@ -202,6 +329,7 @@ public class CRUDController {
 				//redisConnection.getJedis().hget(id, uriType+"*");
 				//get(id);
 		HashMap hm = new HashMap();
+		hm = (HashMap) new JSONParser().parse(result.toString());
 		
 		if(result != null){
 			JSONObject json = (JSONObject) new JSONParser().parse(result);
@@ -209,14 +337,21 @@ public class CRUDController {
 				result = null;
 			}
 		}
-		return new ResponseEntity<Object>(result == null ? null : (JSONObject) new JSONParser().parse(result),result == null ? HttpStatus.FOUND :HttpStatus.NOT_FOUND);		
+		
+		HashMap reconstructedObject = reconstructHashMap(hm);
+		
+		JSONObject json = new JSONObject();
+		json.putAll(reconstructedObject);
+		
+		return new ResponseEntity<Object>(result == null ? null : json,result == null ? HttpStatus.FOUND :HttpStatus.NOT_FOUND);		
 	}
 	
 	@RequestMapping(value="/{uriType}/{id}", method = RequestMethod.PATCH, consumes="application/json")
 	public ResponseEntity<Object> patch(@RequestHeader HttpHeaders headers,@RequestBody String entity, @PathVariable String uriType,
 			@PathVariable String id) throws ParseException{
 		
-		String result = redisConnection.getJedis().hget(id, uriType);
+		String result = getJSONObject(id).toJSONString();
+				//redisConnection.getJedis().hget(id, uriType);
 		
 		if(result == null) return new ResponseEntity<Object>(null, HttpStatus.NOT_FOUND);
 		
@@ -226,6 +361,8 @@ public class CRUDController {
 		
 		//Note : We will only change the String Values in fields not the JSON.
 		//We will deal with fields present in original map
+		
+		System.out.println("Parent is :" + getParent(id));
 		
 		for(Object key : changes.keySet()){
 			
@@ -254,7 +391,7 @@ public class CRUDController {
 		JSONObject json = new JSONObject();
 		json.putAll(original);
 		
-		redisConnection.getJedis().hset(id,uriType ,json.toString());
+		redisConnection.getJedis().hset(id,uriType + "," +getParent(id),json.toString());
 		
 		return new ResponseEntity<Object>(json, HttpStatus.CREATED);
 	}
@@ -265,17 +402,37 @@ public class CRUDController {
 		JSONParser jsonParser = new JSONParser();
 		jsonObject = (JSONObject) jsonParser.parse(entity);
 		String key = (String) jsonObject.get("_id");
-		String result = redisConnection.getJedis().get(key);
+		String result = getJSONObject(key).toJSONString();
+				//redisConnection.getJedis().get(key);
 		if(result == null){
 			return new ResponseEntity<Object>(key,HttpStatus.NOT_FOUND);
 		}else{
 			HashMap current = (HashMap) new JSONParser().parse(result);
 			HashMap update = (HashMap) jsonObject;
-			HashMap result1 = updated(current,update);
+			
+			HashMap reconstructedObject = reconstructHashMap(current);
+						
+			HashMap result1 = updated(reconstructedObject,update);
 			if(result1 != null){
 				JSONObject newObject = new JSONObject();
 				newObject.putAll(result1);
-				redisConnection.getJedis().set((String) newObject.get("_id"), newObject.toString());
+				//redisConnection.getJedis().set((String) newObject.get("_id"), newObject.toString());
+				
+				
+				HashMap hm1 = makeGrandHashMap(result1,key);
+				
+				JSONObject jsonZ = new JSONObject();
+				jsonZ.putAll(hm1);
+				
+				String key1 = jsonZ.get("_id").toString();
+				
+				//redisConnection.getJedis().set(key, jsonZ.toString());
+				
+				redisConnection.getJedis().hset(key1,jsonZ.get("_type").toString()+","+key1 ,jsonZ.toString());
+				
+				
+				
+				
 				return new ResponseEntity<Object>(newObject,HttpStatus.ACCEPTED);
 			}else{
 				return new ResponseEntity<Object>(key,HttpStatus.NOT_FOUND);
@@ -286,9 +443,7 @@ public class CRUDController {
 	public HashMap updated(HashMap hash1, HashMap hash2){
 		for(Object o : hash1.keySet()){
 			if(!hash1.get(o).equals(hash2.get(o))){
-				hash1.put(o, hash1.get(o));
-			}else{
-				return null;
+				hash1.put(o, hash2.get(o));
 			}
 		}
 		return hash1;
@@ -371,33 +526,6 @@ public class CRUDController {
 	}
 	
 	
-	 @RequestMapping(value = { "/{level1}/{id1}",
-		     "/{level1}/{id}/{level2}/{id2}",
-		     "/{level1}/{id1}/{level2}/{id2}/{level3}/{id3}",
-		     "/{level1}/{id1}/{level2}/{id2}/{level3}/{id3}/{level4}/{id4}" }, method
-		     = RequestMethod.PATCH)
-		     @ResponseBody
-		     public String test_nesting_patch(@RequestBody JSONObject newJsonObject,
-		     @PathVariable Map<String, String> pathVariables) throws ParseException {
-		    //
-		     if (pathVariables.containsKey("level4")) {
-		      return pathVariables.get("id4");
-		     } else if (pathVariables.containsKey("level3")) {
-		      return pathVariables.get("id3");
-		     } else if (pathVariables.containsKey("level2")) {
-		     return pathVariables.get("id2");
-		     } else if (pathVariables.containsKey("level1")) {
-		    //
-		    String key = pathVariables.get("id1");
-		    //
-		    // checkJsonAndMergeIfValid(newJsonObject, key);
-		    
-		    // return new JSONObject(jedis.hgetAll(pathVariables.get("id1")));
-		    
-		     } else {
-		     return "";
-		     }
-		     return "";
-		     }
+
 
 }
