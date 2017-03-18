@@ -90,23 +90,25 @@ public class CRUDController {
 		JSONObject json = new JSONObject();
 		json.putAll(hm);
 		
-		HashMap hm1 = makeGrandHashMap(hm);
+		String key = object.get("_id").toString();
+		
+		HashMap hm1 = makeGrandHashMap(hm,key);
 				
 		JSONObject jsonZ = new JSONObject();
 		jsonZ.putAll(hm1);
 		
-		String key = jsonZ.get("_id").toString();
+		String key1 = jsonZ.get("_id").toString();
 		
 		//redisConnection.getJedis().set(key, jsonZ.toString());
 		
-		redisConnection.getJedis().hset(key,jsonZ.get("_type").toString() ,jsonZ.toString());
+		redisConnection.getJedis().hset(key1,jsonZ.get("_type").toString() ,jsonZ.toString());
 			
 		return new ResponseEntity<Object>(object, HttpStatus.CREATED);
 	}
 	
 
 	
-	public HashMap makeGrandHashMap(HashMap hm) throws ParseException{
+	public HashMap makeGrandHashMap(HashMap hm,String key) throws ParseException{
 		
 		for(Object o : hm.keySet()){
 			
@@ -120,11 +122,11 @@ public class CRUDController {
 				String keyGen = jsonObject.get("_id").toString();
 					//redisConnection.getJedis().set(keyGen, jsonObject.toString());
 					
-					redisConnection.getJedis().hset(keyGen, jsonObject.get("_type").toString(), jsonObject.toString());
+					redisConnection.getJedis().hset(keyGen, jsonObject.get("_type").toString()+ ","+key, jsonObject.toString());
 					
 					if(!isSimpleJson(jsonObject)){
 						
-						makeGrandHashMap(hmL);
+						makeGrandHashMap(hmL,key);
 						
 					}
 					
@@ -140,16 +142,17 @@ public class CRUDController {
 				
 				for(int i = 0; i < jsonArray.size(); i++){
 					JSONObject jsonObject = (JSONObject) jsonArray.get(i);
-					String key = jsonObject.get("_id").toString();
-					stringArray[i] = key;
+					String key1 = jsonObject.get("_id").toString();
+					stringArray[i] = key1;
 					//redisConnection.getJedis().set(key, jsonObject.toString());
 					
-					redisConnection.getJedis().hset(key, jsonObject.get("_type").toString(), jsonObject.toString());
+					redisConnection.getJedis().hset(key1, jsonObject.get("_type").toString() + ","+key, jsonObject.toString());
+					
 					
 					
 					if(!isSimpleJson(jsonObject)){
 						
-						makeGrandHashMap((HashMap) jsonObject);
+						makeGrandHashMap((HashMap) jsonObject,key);
 						
 					}
 				}
@@ -174,9 +177,32 @@ public class CRUDController {
 	public ResponseEntity<Object> get(@RequestHeader HttpHeaders headers, @PathVariable String uriType,
 			@PathVariable String id) throws ParseException{
 		//String result = redisConnection.getJedis().get(id);
-		String result = redisConnection.getJedis().hget(id, uriType);
+		
+		//some research
+	    Map hmz = redisConnection.getJedis().hgetAll(id);
+	    
+	    String resultz = null;
+	    String[] keyz = null;
+	    
+	   for(Object keys : hmz.keySet()){
+		   
+		   if(keys.toString().contains(uriType)){
+			   resultz = hmz.get(keys).toString();
+			   keyz = keys.toString().split(",");
+		   } else {
+			   //will punt out
+		   }
+		   
+		   
+	   }
+	    
+	    //end some research
+		
+		String result = resultz;
+				//redisConnection.getJedis().hget(id, uriType+"*");
 				//get(id);
 		HashMap hm = new HashMap();
+		
 		if(result != null){
 			JSONObject json = (JSONObject) new JSONParser().parse(result);
 			if(!json.get("_type").equals(uriType)){
