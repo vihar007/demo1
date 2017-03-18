@@ -451,12 +451,12 @@ public class CRUDController {
 	}
 
 	
-	@RequestMapping(value = "/{uriType}/{id}", method = RequestMethod.DELETE, produces = "application/json")
+	@RequestMapping(value = "/{uriType}/{id}", method = RequestMethod.DELETE)
 	public ResponseEntity<Void> delete(@RequestHeader HttpHeaders headers, @PathVariable String uriType,
 			@PathVariable String id) throws ParseException{
 		
 		
-		String result = redisConnection.getJedis().get(id);
+		String result = getJSONObject(id).toJSONString();
 		if(result == null) {
 			JSONObject json = (JSONObject) new JSONParser().parse(result);
 			if(!json.get("_type").equals(uriType)){
@@ -474,54 +474,75 @@ public class CRUDController {
 		return new ResponseEntity<>(HttpStatus.OK);
 	}
 	
-	static int pppp = 0;
+	
 	
 	public void cascadeDelete(HashMap hm) throws ParseException {
 		
-		
-		
-		System.out.println("I am called " + ++pppp + " times");
-		
-		for(Object key : hm.keySet()){
+	
+		for(Object o : hm.keySet()){
 			
-			if(key.equals("_id")){
-				redisConnection.getJedis().del(hm.get(key).toString());
-			} else if(hm.get(key) instanceof JSONArray){
-				JSONArray jsonArray = (JSONArray) hm.get(key);
-				for(int i = 0 ; i < jsonArray.size() ; i++){
-					JSONObject json = (JSONObject) new JSONParser().parse(redisConnection.getJedis().get(jsonArray.get(i).toString()));
-					cascadeDelete((HashMap) json);
-					System.out.println("Inside JSON");
-					redisConnection.getJedis().del(jsonArray.get(i).toString());
-				}	
-			} else if(hm.get(key) instanceof JSONObject){
-				System.out.println("Ouch I have JSON KEY" + hm.get(key).toString());
-				JSONObject resJson = (JSONObject) new JSONParser().parse(hm.get(key).toString());
-				redisConnection.getJedis().del(resJson.get("_id").toString());
-				if(!isSimpleJson(resJson)){
-					cascadeDelete((HashMap) resJson);
-					System.out.println("I am not simple JSON");
-				}  else {
-					System.out.println("****************SIMPLE JSON*******************");
-				}
+			//do nothing studd
+			
+			if(o.toString().equals("_type")){
+				
+				System.out.println("We do nothing for type");
+
+			} else 
+				if(o.toString().equals("_id") ){
+			
+					redisConnection().getJedis().del(hm.get(o).toString());
+					
+					System.out.println("Deleting : " + hm.get(o).toString());
+			
 			} else {
-				{
-					String kye = hm.get(key).toString();
-					String result = redisConnection.getJedis().get(hm.get(key).toString());
-					if(result != null){
-						JSONObject resJson = (JSONObject) new JSONParser().parse(result);
-						redisConnection.getJedis().del(resJson.get("_id").toString());
-						if(!isSimpleJson(resJson)){
-							cascadeDelete((HashMap) resJson);
-							System.out.println("I am not simple JSON");
-						}  else {
-							System.out.println("****************SIMPLE JSON*******************");
-						}
-											
-					}
-				}
-			}
+				
+				Object value = hm.get(o);
+				
+				if(value instanceof JSONArray){
+					
+					JSONArray jsonArray = (JSONArray) hm.get(o);
+					//iterate over & call the method again
+					
+					for(int i = 0; i < jsonArray.size(); i++){
+						String key = jsonArray.get(i).toString();
 						
+						if(redisConnection.getJedis().type(key.toString()).toString().equals("hash")){
+							System.out.println("Its a hash get the document and pass it further please");
+							
+							
+							JSONObject obj = getJSONObject(key);
+							
+							HashMap hm1  = (HashMap) obj;
+							reconstructHashMap(hm1);
+							
+							
+						}
+						
+
+					}
+					
+					
+				} else if(value instanceof String){
+					
+					//retriving Map
+										
+					if(redisConnection.getJedis().type(value.toString()).toString().equals("hash")){
+						
+						JSONObject job = getJSONObject(value.toString());
+						
+						HashMap hm2  = (HashMap) job;
+						
+						System.out.println("Deleting : " + o.toString());
+						
+						reconstructHashMap(hm2);
+						
+						
+					}
+					
+				}
+				
+			}
+			
 		}
 	}
 	
