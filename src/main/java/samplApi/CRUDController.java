@@ -1,5 +1,8 @@
 package samplApi;
 
+import java.io.UnsupportedEncodingException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Array;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,6 +18,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,8 +45,36 @@ public class CRUDController {
 	RedisConnection redisConnection;
 	
 	
+	private String userID = "";
+	
+	
+	
+	@RequestMapping(value="/createToken",method = RequestMethod.POST, consumes="application/json")
+
+	public ResponseEntity<Object> generateEncryption(@RequestHeader HttpHeaders headers, @RequestBody String entity) throws Exception{
+
+	JSONObject jsonObject = (JSONObject) new JSONParser().parse(entity);
+
+	//String role = (String) jsonObject.get("_role");
+
+	String userAuthontication = (String) jsonObject.get("_id");
+
+	userID = userAuthontication;
+
+	String authorizationHeader = Encrypter.encrypt(userAuthontication);
+
+
+	return new ResponseEntity<Object>(authorizationHeader, HttpStatus.CREATED);
+
+	}
+	
+	
+	
+	
 	@RequestMapping(value = "/schema", method = RequestMethod.POST, consumes = "application/json")
 	public ResponseEntity<Object> createSchema(@RequestHeader HttpHeaders headers, @RequestBody String entity) throws Exception{
+		
+		if(!isAuthorized(headers)) return new ResponseEntity<Object>(HttpStatus.UNAUTHORIZED);
 		
 		JSONObject object = (JSONObject) new JSONParser().parse(entity);
 		
@@ -63,6 +96,8 @@ public class CRUDController {
 		
 	@RequestMapping(value = "/{uriType}", method = RequestMethod.POST, consumes = "application/json")
 	public ResponseEntity<Object> create(@RequestHeader HttpHeaders headers, @RequestBody String entity, @PathVariable String uriType) throws Exception{
+		
+		if(!isAuthorized(headers)) return new ResponseEntity<Object>(HttpStatus.UNAUTHORIZED);
 		
 		String schema = redisConnection.getJedis().get(uriType);
 		
@@ -104,7 +139,7 @@ public class CRUDController {
 		
 		redisConnection.getJedis().hset(key1,jsonZ.get("_type").toString()+","+key1 ,jsonZ.toString());
 			
-		return new ResponseEntity<Object>(object, HttpStatus.CREATED);
+		return new ResponseEntity<Object>(object,generateNewEtag(jsonZ) ,HttpStatus.CREATED);
 	}
 	
 	
@@ -199,6 +234,90 @@ public class CRUDController {
 		
 		return hm;
 	}
+	
+	
+	//helper methods
+	
+	public String etagGeneration(JSONObject result) throws UnsupportedEncodingException, NoSuchAlgorithmException{
+
+		MessageDigest messageDigest = MessageDigest.getInstance("MD5");
+
+		byte[] bytesOfMessage = result.toJSONString().getBytes("UTF-8");
+
+		byte[] thedigest = messageDigest.digest(bytesOfMessage);
+
+		return	thedigest.toString();
+
+
+		}
+
+
+		public boolean isAuthorized(HttpHeaders headers){
+
+
+		String token = headers.getFirst("Authorization");
+
+		if(token == null){
+
+		return false;
+
+		}
+
+		String decrypted;
+
+		try {
+
+			decrypted = Encrypter.decrypt(token);
+			
+		} catch (Exception e) {
+
+		// TODO Auto-generated catch block
+
+		e.printStackTrace();
+
+		return false;
+
+		}
+
+		if(decrypted.equals(userID)){
+
+		return true;
+
+		}
+
+
+
+
+		return false;
+
+		}
+
+		public boolean deleteEtag(String key){
+
+
+		redisConnection.getJedis().hdel(key+"ETAG", "used");
+
+		redisConnection.getJedis().hdel(key+"ETAG", "new");
+
+
+		return true;
+
+		}
+
+
+		public MultiValueMap<String, String> generateNewEtag(JSONObject jsonObject) throws UnsupportedEncodingException, NoSuchAlgorithmException, ParseException{
+
+		String etag = etagGeneration(jsonObject);
+
+		redisConnection.getJedis().hset(getParent(jsonObject.get("_id").toString())+"ETAG", "new", etag);
+
+		MultiValueMap<String, String> params = new LinkedMultiValueMap<String, String>();
+
+		    params.set("Etag", etag);
+
+		return params;
+
+		}
 	
 	public JSONObject getJSONObject(String key) throws ParseException{
 		
@@ -300,10 +419,62 @@ public class CRUDController {
 		return true;		
 	}
 	
+	
+	public boolean isUsedEtag(String id,String etag){
+		
+		Map<String, String> map = redisConnection.getJedis().hgetAll(id+"ETAG");
+		
+		if(map.containsValue(etag)){
+			if(map.containsKey("used")) {
+				return true;
+			}
+		}
+		
+		return false;
+		
+	}
+	
+	
+	
 	@RequestMapping(value = "/{uriType}/{id}", method = RequestMethod.GET, produces = "application/json")
 	public ResponseEntity<Object> get(@RequestHeader HttpHeaders headers, @PathVariable String uriType,
 			@PathVariable String id) throws ParseException{
 		//String result = redisConnection.getJedis().get(id);
+		
+		if(!isAuthorized(headers)) return new ResponseEntity<Object>(HttpStatus.UNAUTHORIZED);
+		
+		String etag = headers.getFirst("If-None-Match");
+		
+		
+		if(etag != null && isUsedEtag(id,etag)){
+			
+			return new ResponseEntity<>(HttpStatus.NOT_MODIFIED);
+			
+		} if(etag == null){
+			Map<String,String> queryMap = redisConnection.getJedis().hgetAll(getParent(id)+"ETAG");
+
+			
+
+			for(Object v : queryMap.keySet()){
+
+			if(v.equals("new") || v.equals("used")){
+
+			etag = queryMap.get(v);
+
+			}
+
+			}
+		} if(etag != null && !isUsedEtag(id,etag)){
+			
+			deleteEtag(id);
+			redisConnection.getJedis().hset(getParent(id)+"ETAG", "used", etag);
+			
+		}
+		
+		
+		
+		
+		
 		
 		//some research
 	    Map hmz = redisConnection.getJedis().hgetAll(id);
@@ -343,12 +514,18 @@ public class CRUDController {
 		JSONObject json = new JSONObject();
 		json.putAll(reconstructedObject);
 		
-		return new ResponseEntity<Object>(result == null ? null : json,result == null ? HttpStatus.FOUND :HttpStatus.NOT_FOUND);		
+		MultiValueMap<String, String> params = new LinkedMultiValueMap<String, String>();
+
+	    params.set("Etag", etag);
+		
+		return new ResponseEntity<Object>(result == null ? null : json,result == null ? null : params,result == null ? HttpStatus.FOUND :HttpStatus.NOT_FOUND);		
 	}
 	
 	@RequestMapping(value="/{uriType}/{id}", method = RequestMethod.PATCH, consumes="application/json")
 	public ResponseEntity<Object> patch(@RequestHeader HttpHeaders headers,@RequestBody String entity, @PathVariable String uriType,
-			@PathVariable String id) throws ParseException{
+			@PathVariable String id) throws ParseException, UnsupportedEncodingException, NoSuchAlgorithmException{
+		
+		if(!isAuthorized(headers)) return new ResponseEntity<Object>(HttpStatus.UNAUTHORIZED);
 		
 		String result = getJSONObject(id).toJSONString();
 				//redisConnection.getJedis().hget(id, uriType);
@@ -393,11 +570,17 @@ public class CRUDController {
 		
 		redisConnection.getJedis().hset(id,uriType + "," +getParent(id),json.toString());
 		
-		return new ResponseEntity<Object>(json, HttpStatus.CREATED);
+		deleteEtag(getParent(id));
+		
+		
+		return new ResponseEntity<Object>(json, generateNewEtag(json),HttpStatus.CREATED);
 	}
 	
 	@RequestMapping(value="/{uriType}", method = RequestMethod.PUT, consumes="application/json")
-	public ResponseEntity<Object> update(@RequestHeader HttpHeaders headers,@RequestBody String entity) throws ParseException{
+	public ResponseEntity<Object> update(@RequestHeader HttpHeaders headers,@RequestBody String entity) throws ParseException, UnsupportedEncodingException, NoSuchAlgorithmException{
+		
+		if(!isAuthorized(headers)) return new ResponseEntity<Object>(HttpStatus.UNAUTHORIZED);
+		
 		JSONObject jsonObject = new JSONObject();
 		JSONParser jsonParser = new JSONParser();
 		jsonObject = (JSONObject) jsonParser.parse(entity);
@@ -430,10 +613,11 @@ public class CRUDController {
 				
 				redisConnection.getJedis().hset(key1,jsonZ.get("_type").toString()+","+key1 ,jsonZ.toString());
 				
+				deleteEtag(getParent(key1));
 				
 				
 				
-				return new ResponseEntity<Object>(newObject,HttpStatus.ACCEPTED);
+				return new ResponseEntity<Object>(newObject,generateNewEtag(jsonZ),HttpStatus.ACCEPTED);
 			}else{
 				return new ResponseEntity<Object>(key,HttpStatus.NOT_FOUND);
 			}
@@ -455,6 +639,7 @@ public class CRUDController {
 	public ResponseEntity<Void> delete(@RequestHeader HttpHeaders headers, @PathVariable String uriType,
 			@PathVariable String id) throws ParseException{
 		
+		if(!isAuthorized(headers)) return new ResponseEntity<Void>(HttpStatus.UNAUTHORIZED);
 		
 		String result = getJSONObject(id).toJSONString();
 		if(result == null) {

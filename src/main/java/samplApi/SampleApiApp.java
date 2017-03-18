@@ -1,5 +1,7 @@
 package samplApi;
 
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.embedded.EmbeddedServletContainerCustomizer;
@@ -18,6 +20,13 @@ public class SampleApiApp {
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		SpringApplication.run(SampleApiApp.class, args);
+		
+		
+		//creating encryptor
+		
+		
+		
+
 
 	}
 
