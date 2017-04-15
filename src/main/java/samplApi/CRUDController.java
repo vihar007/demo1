@@ -164,13 +164,6 @@ public class CRUDController {
 					
 					JSONArray jsonArray = (JSONArray) hm.get(o);
 					
-					System.out.println("*************Inside JSON array");
-					
-					
-					
-					
-					
-					
 					//iterate over & call the method again
 					
 					for(int i = 0; i < jsonArray.size(); i++){
@@ -184,6 +177,7 @@ public class CRUDController {
 							
 							JSONObject obj = getJSONObject(key);
 							
+
 							HashMap hm1  = (HashMap) obj;
 							
 							jsonArray.set(i, obj);
@@ -346,7 +340,7 @@ public class CRUDController {
 	   for(Object keys : hmz.keySet())
 		   keyz = keys.toString().split(",");
 
-		
+		System.out.println(id);
 		
 		return keyz[1];
 		
@@ -368,13 +362,15 @@ public class CRUDController {
 				String keyGen = jsonObject.get("_id").toString();
 					//redisConnection.getJedis().set(keyGen, jsonObject.toString());
 					
-					redisConnection.getJedis().hset(keyGen, jsonObject.get("_type").toString()+ ","+key, jsonObject.toString());
 					
 					if(!isSimpleJson(jsonObject)){
 						
-						makeGrandHashMap(hmL,key);
+						makeGrandHashMap(hmL,keyGen);
 						
 					}
+					
+					redisConnection.getJedis().hset(keyGen, jsonObject.get("_type").toString()+ ","+key, jsonObject.toString());
+					
 					
 					hm.put(o, keyGen);
 				
@@ -392,15 +388,17 @@ public class CRUDController {
 					stringArray[i] = key1;
 					//redisConnection.getJedis().set(key, jsonObject.toString());
 					
-					redisConnection.getJedis().hset(key1, jsonObject.get("_type").toString() + ","+key, jsonObject.toString());
 					
 					
 					
 					if(!isSimpleJson(jsonObject)){
 						
-						makeGrandHashMap((HashMap) jsonObject,key);
+						makeGrandHashMap((HashMap) jsonObject,key1);
 						
 					}
+					
+					redisConnection.getJedis().hset(key1, jsonObject.get("_type").toString() + ","+key, jsonObject.toString());
+					
 				}
 				
 				hm.put(o, Arrays.asList(stringArray));
