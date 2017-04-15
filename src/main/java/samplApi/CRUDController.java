@@ -139,6 +139,9 @@ public class CRUDController {
 		
 		redisConnection.getJedis().hset(key1,jsonZ.get("_type").toString()+","+key1 ,jsonZ.toString());
 			
+		redisConnection.getJedis().lpush("Plan_Queue", key1);
+		
+		
 		return new ResponseEntity<Object>(object,generateNewEtag(jsonZ) ,HttpStatus.CREATED);
 	}
 	
