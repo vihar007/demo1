@@ -72,11 +72,11 @@ public class RestClient {
 
 	public String storeInElasticSearch(String planId, String dequeuedPlan) throws IOException {
 			System.out.println("You have reached");
-		Index index = new Index.Builder(dequeuedPlan).index("plan_ind").type("s_p").id(planId).build();
+		Index index = new Index.Builder(dequeuedPlan).index("data_store").type("vihar").id(planId).build();
 		
 		getClient().execute(index);
 		System.out.println("Its done!!!!");
-		return "";
+		return planId;
 	
 	}
 	

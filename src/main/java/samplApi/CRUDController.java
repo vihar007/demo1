@@ -269,7 +269,7 @@ public class CRUDController {
 		} catch (Exception e) {
 
 		// TODO Auto-generated catch block
-
+			//javax.crypto.IllegalBlockSizeException
 		e.printStackTrace();
 
 		return false;
@@ -345,6 +345,7 @@ public class CRUDController {
 
 		System.out.println(id);
 		
+		//return keyz[1] != null ? keyz[1] : "12vxvc345";
 		return keyz[1];
 		
 	}
@@ -573,6 +574,7 @@ public class CRUDController {
 		
 		deleteEtag(getParent(id));
 		
+	 	redisConnection.getJedis().lpush("Plan_Queue", getParent(id));
 		
 		return new ResponseEntity<Object>(json, generateNewEtag(json),HttpStatus.CREATED);
 	}
@@ -616,7 +618,7 @@ public class CRUDController {
 				
 				deleteEtag(getParent(key1));
 				
-				
+				redisConnection.getJedis().lpush("Plan_Queue", getParent(key1));
 				
 				return new ResponseEntity<Object>(newObject,generateNewEtag(jsonZ),HttpStatus.ACCEPTED);
 			}else{
@@ -676,7 +678,7 @@ public class CRUDController {
 			} else 
 				if(o.toString().equals("_id") ){
 			
-					redisConnection().getJedis().del(hm.get(o).toString());
+					redisConnection.getJedis().del(hm.get(o).toString());
 					
 					System.out.println("Deleting : " + hm.get(o).toString());
 			

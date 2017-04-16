@@ -191,10 +191,9 @@ public void process (){
 			hm.remove("_id");
 			hm.remove("_type");
 			String obj=JSONObject.toJSONString(hm);
-			client.storeInElasticSearch(answer, obj);
-	/*		String indexerURI = "http://localhost:9200";
-			ResponseEntity<String> response =client.put(indexerURI, JSONObject.toJSONString(hm), "plan_ind" );*/
-			/*System.out.println( response.getStatusCode());*/
+			String returnId = client.storeInElasticSearch(answer, obj);
+			if (returnId != null)  jedis.lrem(inProgressQ, 0, returnId);
+
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
